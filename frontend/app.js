@@ -276,7 +276,9 @@
         "<span>Pool left: " + pool + "</span>" +
         '<span>Creator: <a href="' + explorer("/address/" + q.creator) + '" target="_blank" rel="noopener">' + shortAddr(q.creator) + "</a></span>" +
       "</div>" +
-      '<button class="primary complete-btn" type="button">Complete quest</button>' +
+      '<button class="primary ai-btn" type="button">🤖 Copy prompt for Binance AI Pro</button>' +
+      '<p class="ai-hint" style="font-size:13px;opacity:.8;margin:6px 0 10px">Your Agent ID lives in your Agentic Wallet. Copy this prompt, open Binance App → AI Pro, paste and send. Confirm the preview (value 0 BNB).</p>' +
+      '<button class="ghost complete-btn" type="button">Complete with browser wallet</button>' +
       (canWithdraw ? '<button class="secondary withdraw-btn" type="button">Withdraw unused BNB</button>' : "") +
       '<div class="tx complete-status"></div>';
 
@@ -300,6 +302,15 @@
       });
     }
 
+    const aiBtn = wrap.querySelector(".ai-btn");
+    if (ended || full) aiBtn.disabled = true;
+    aiBtn.addEventListener("click", function () {
+      const prompt = aiPrompt(q);
+      const done = function () { const o = aiBtn.textContent; aiBtn.textContent = "✅ Copied! Paste it in Binance AI Pro"; setTimeout(function () { aiBtn.textContent = o; }, 2500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(prompt).then(done, function () { window.prompt("Copy this prompt:", prompt); });
+      } else { window.prompt("Copy this prompt:", prompt); }
+    });
     const cBtn = wrap.querySelector(".complete-btn");
     const statusEl = wrap.querySelector(".complete-status");
     if (ended || full) cBtn.disabled = true;
@@ -412,6 +423,20 @@
       button.disabled = false;
       button.textContent = old;
     }
+  }
+
+  function aiPrompt(q) {
+    const id = q.id.toString();
+    const data = "0x528be0a9" + BigInt(id).toString(16).padStart(64, "0");
+    return "Using my Binance Agentic Wallet (the wallet that holds my Agent ID), complete a quest on Agent ID Quest Board.\n\n" +
+      "Call this smart contract on BNB Smart Chain (chain ID 56):\n" +
+      "Contract: " + cfg.contractAddress + "\n" +
+      "Function: completeQuest(uint256 questId)\n" +
+      "questId: " + id + "\n" +
+      "Value: 0 BNB\n" +
+      "Input data: " + data + "\n\n" +
+      "Quest #" + id + ": " + q.title + "\n\n" +
+      "Rules: show me a preview first and wait for my confirmation before sending. Send value 0 only. If Dev Mode is off or the call fails, stop and tell me. Never ask me for keys, codes or seed phrases. After it confirms, tell me the transaction hash.";
   }
 
   function sendComplete(id, btn, statusEl) {
