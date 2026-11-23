@@ -1,42 +1,25 @@
-/* Quest Board frontend. All writes go through the user's injected wallet. */
+/* Agent ID Quest Board frontend.
+   Read-only UI. All writes are prompts the user pastes in Binance AI Pro,
+   signed by their Agentic Wallet. This page never connects a browser wallet. */
 (function () {
   const AGENT_ABI = [
     "function balanceOf(address owner) view returns (uint256)",
     "function handleOf(address owner) view returns (string)",
   ];
 
-  const ERROR_TEXT = {
-    NotAgentIdHolder: "This wallet does not hold an Agent ID.",
-    AlreadyCompleted: "You already completed this quest.",
-    QuestEnded: "This quest has ended.",
-    QuestFull: "This quest is full.",
-    QuestNotFound: "Quest not found.",
-    NotCreator: "Only the quest creator can withdraw unused BNB.",
-    QuestStillOpen: "The quest is still open, so unused BNB cannot be withdrawn yet.",
-    NothingToWithdraw: "There is no unused BNB left to withdraw.",
-    CreateIsPaused: "Creating new quests is currently paused.",
-    EmptyTitle: "Title is required.",
-    EmptyDescription: "Description is required.",
-    TitleTooLong: "Title is too long.",
-    DescriptionTooLong: "Description is too long.",
-    LinkTooLong: "Link is too long.",
-    InvalidMaxCompletions: "Max completions must be between 1 and 10,000.",
-    InvalidEndTime: "End time must be in the future and within 365 days.",
-    TransferFailed: "BNB transfer failed.",
-    DirectTransferDisabled: "Direct BNB transfers are not accepted.",
-    Reentrant: "Reentrancy blocked.",
-    NotOwner: "Only the owner can do that.",
-    NoOwner: "This contract has no owner.",
-  };
+  const FALLBACK_RPCS = [
+    "https://bsc-dataseed.bnbchain.org",
+    "https://bsc-rpc.publicnode.com",
+    "https://bsc-dataseed1.defibit.io",
+    "https://bsc-dataseed1.binance.org",
+  ];
 
   const cfg = window.QUEST_BOARD_CONFIG || {};
   const ZERO = "0x0000000000000000000000000000000000000000";
+  const handleCache = new Map();
 
   const els = {
     alerts: document.getElementById("alerts"),
-    connectBtn: document.getElementById("connectBtn"),
-    walletLabel: document.getElementById("walletLabel"),
-    agentLabel: document.getElementById("agentLabel"),
     questList: document.getElementById("questList"),
     leaderboard: document.getElementById("leaderboard"),
     createForm: document.getElementById("createForm"),
@@ -45,72 +28,101 @@
     pool: document.getElementById("pool"),
     maxCompletions: document.getElementById("maxCompletions"),
     refreshBtn: document.getElementById("refreshBtn"),
+    checkForm: document.getElementById("checkForm"),
+    checkAddr: document.getElementById("checkAddr"),
+    checkBtn: document.getElementById("checkBtn"),
+    checkResult: document.getElementById("checkResult"),
   };
 
   const state = {
-    raw: null,
-    browser: null,
-    signer: null,
-    account: null,
-    holdsId: false,
-    ownHandle: "",
-    chainId: null,
+    provider: null,
+    providerPromise: null,
+    quests: [],
   };
 
   function $(sel, root) { return (root || document).querySelector(sel); }
+
   function shortAddr(a) {
     if (!a) return "—";
     return a.slice(0, 6) + "…" + a.slice(-4);
   }
+
   function explorer(path) {
     const base = (cfg.explorerUrl || "https://bscscan.com").replace(/\/$/, "");
     return base + path;
   }
+
   function isConfigured() {
     const a = (cfg.contractAddress || "").trim();
-    return /^0x[0-9a-fA-F]{40}$/.test(a) && a.toLowerCase() !== ZERO;
+    return /^0x[0-9a-fA-F]{40}$/.test(a) && a.toLowerCase() !== ZERO.toLowerCase();
   }
-  function chainHex() {
-    return "0x" + Number(cfg.chainId).toString(16);
-  }
+
   function nowUnix() { return Math.floor(Date.now() / 1000); }
 
-  function setAlert(kind, html) {
-    els.alerts.innerHTML = html ? `<div class="banner ${kind}">${html}</div>` : "";
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
   }
-  function appendAlert(kind, html) {
-    els.alerts.insertAdjacentHTML("beforeend", `<div class="banner ${kind}">${html}</div>`);
+
+  function setAlert(kind, html) {
+    els.alerts.innerHTML = html ? '<div class="banner ' + kind + '">' + html + "</div>" : "";
   }
 
   function friendlyError(err) {
     const msg = (err && (err.shortMessage || err.reason || err.message)) || String(err);
-    const nameMatch = msg.match(/([A-Z][A-Za-z0-9]+)\(/);
-    if (nameMatch && ERROR_TEXT[nameMatch[1]]) return ERROR_TEXT[nameMatch[1]];
-    for (const k of Object.keys(ERROR_TEXT)) {
-      if (msg.includes(k)) return ERROR_TEXT[k];
+    if (/failed to detect network|timeout|403|429|NETWORK_ERROR|could not coalesce/i.test(msg)) {
+      return "Could not reach BNB Smart Chain right now. Pull to refresh in a moment.";
     }
-    if (/user rejected|ACTION_REJECTED|denied/i.test(msg)) return "Transaction rejected in the wallet.";
-    if (/insufficient funds/i.test(msg)) return "Not enough BNB in this wallet to cover the amount plus gas.";
     return msg;
   }
 
-  function getInjected() {
-    const eth = window.ethereum;
-    if (eth && Array.isArray(eth.providers) && eth.providers.length) {
-      return eth.providers.find((p) => p.isBinance || p.isBinanceWallet || p.isMetaMask) || eth.providers[0];
+  function rpcList() {
+    const urls = [cfg.rpcUrl].concat(FALLBACK_RPCS);
+    const seen = new Set();
+    return urls.filter(function (u) {
+      if (!u || seen.has(u)) return false;
+      seen.add(u);
+      return true;
+    });
+  }
+
+  async function getProvider() {
+    if (state.provider) return state.provider;
+    if (state.providerPromise) return state.providerPromise;
+    state.providerPromise = (async function () {
+      let lastErr;
+      const chainId = Number(cfg.chainId) || 56;
+      for (const url of rpcList()) {
+        try {
+          const p = new ethers.JsonRpcProvider(url, chainId, { staticNetwork: true });
+          await Promise.race([
+            p.getBlockNumber(),
+            new Promise(function (_, rej) { setTimeout(function () { rej(new Error("RPC timeout")); }, 7000); }),
+          ]);
+          state.provider = p;
+          return p;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      throw lastErr || new Error("No working BSC RPC");
+    })();
+    try {
+      return await state.providerPromise;
+    } catch (err) {
+      state.providerPromise = null;
+      throw err;
     }
-    return eth || window.binancew3w || window.binance || window.BinanceChain || null;
   }
 
-  function readProvider() {
-    if (state.browser) return state.browser;
-    return new ethers.JsonRpcProvider(cfg.rpcUrl);
-  }
-
-  function boardContract(withSigner) {
+  async function boardContract() {
     if (!isConfigured()) throw new Error("Contract address is not set in config.js");
-    const runner = withSigner && state.signer ? state.signer : readProvider();
-    return new ethers.Contract(cfg.contractAddress, window.QUEST_BOARD_ABI, runner);
+    return new ethers.Contract(cfg.contractAddress, window.QUEST_BOARD_ABI, await getProvider());
+  }
+
+  async function agentNft() {
+    return new ethers.Contract(cfg.agentIdAddress, AGENT_ABI, await getProvider());
   }
 
   function formatBnb(wei) {
@@ -142,287 +154,21 @@
   function updateRewardPreview() {
     const max = Number(els.maxCompletions.value || 0);
     const pool = Number(els.pool.value || 0);
+    const sym = cfg.currencySymbol || "BNB";
     if (!max || max <= 0 || !pool) {
-      els.rewardPreview.textContent = "Reward per completion: 0 " + (cfg.currencySymbol || "BNB") + " (optional)";
+      els.rewardPreview.textContent = "Reward per completion: 0 " + sym + " (optional)";
       return;
     }
     const each = pool / max;
     els.rewardPreview.textContent =
       "Reward per completion: " + each.toFixed(6).replace(/0+$/, "").replace(/\.$/, "") +
-      " " + (cfg.currencySymbol || "BNB") + " (from this quest's pool only)";
+      " " + sym + " (from this quest's pool only)";
   }
 
-  async function ensureChain() {
-    const raw = state.raw;
-    if (!raw || !raw.request) return;
-    const wanted = Number(cfg.chainId);
-    const current = Number(await raw.request({ method: "eth_chainId" }));
-    if (current === wanted) return;
-    try {
-      await raw.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: chainHex() }],
-      });
-    } catch (err) {
-      if (err && (err.code === 4902 || /unrecognized|not added/i.test(String(err.message || err)))) {
-        await raw.request({
-          method: "wallet_addEthereumChain",
-          params: [{
-            chainId: chainHex(),
-            chainName: cfg.chainName || "BNB Smart Chain",
-            nativeCurrency: { name: cfg.currencySymbol || "BNB", symbol: cfg.currencySymbol || "BNB", decimals: 18 },
-            rpcUrls: [cfg.rpcUrl],
-            blockExplorerUrls: [cfg.explorerUrl],
-          }],
-        });
-        return;
-      }
-      throw err;
-    }
-  }
-
-  async function connect() {
-    const raw = getInjected();
-    if (!raw) {
-      setAlert("err", "No wallet found. Open this page in the Binance App browser or MetaMask, then tap Connect. Your wallet will ask you to confirm.");
-      return;
-    }
-    state.raw = raw;
-    state.browser = new ethers.BrowserProvider(raw, "any");
-    await ensureChain();
-    await state.browser.send("eth_requestAccounts", []);
-    state.signer = await state.browser.getSigner();
-    state.account = await state.signer.getAddress();
-    const net = await state.browser.getNetwork();
-    state.chainId = Number(net.chainId);
-    els.connectBtn.textContent = shortAddr(state.account);
-    await refreshAccount();
-    await Promise.all([loadQuests(), loadLeaderboard()]);
-  }
-
-  async function refreshAccount() {
-    if (!state.account) {
-      els.walletLabel.textContent = "Not connected";
-      els.agentLabel.innerHTML = '<span class="badge no">Unknown</span>';
-      return;
-    }
-    if (state.chainId && Number(cfg.chainId) && state.chainId !== Number(cfg.chainId)) {
-      els.walletLabel.textContent = shortAddr(state.account);
-      els.agentLabel.innerHTML = '<span class="badge no">Wrong network</span>';
-      setAlert("warn", "Please switch your wallet to " + (cfg.chainName || "the correct network") + " (chain ID " + cfg.chainId + ").");
-      return;
-    }
-    let holds = false;
-    let handle = "";
-    try {
-      if (isConfigured()) {
-        const board = boardContract(false);
-        holds = await board.holdsAgentId(state.account);
-      }
-      if (cfg.agentIdAddress) {
-        const nft = new ethers.Contract(cfg.agentIdAddress, AGENT_ABI, readProvider());
-        if (!holds) {
-          try {
-            const bal = await nft.balanceOf(state.account);
-            holds = bal > 0n;
-          } catch (_) { /* ignore */ }
-        }
-        // Reverse-resolve only the connected wallet, never a name search.
-        try {
-          handle = await nft.handleOf(state.account);
-        } catch (_) { handle = ""; }
-      }
-    } catch (err) {
-      console.warn(err);
-    }
-    state.holdsId = holds;
-    state.ownHandle = handle || "";
-    els.walletLabel.innerHTML =
-      '<a href="' + explorer("/address/" + state.account) + '" target="_blank" rel="noopener">' +
-      shortAddr(state.account) + "</a>";
-    if (holds) {
-      const label = state.ownHandle ? (state.ownHandle + ".ai") : "Holder";
-      els.agentLabel.innerHTML = '<span class="badge yes">' + label + "</span>";
-    } else {
-      els.agentLabel.innerHTML = '<span class="badge no">No Agent ID</span>';
-    }
-  }
-
-  function renderQuest(q) {
-    const ended = Number(q.endsAt) <= nowUnix();
-    const full = Number(q.completionCount) >= Number(q.maxCompletions);
-    const mine = state.account && q.creator.toLowerCase() === state.account.toLowerCase();
-    const reward = formatBnb(q.rewardPerCompletion);
-    const pool = formatBnb(q.remainingPool);
-    const link = (q.link || "").trim();
-    const status = ended ? "Ended" : full ? "Full" : "Open";
-    const canWithdraw = mine && (ended || full) && q.remainingPool > 0n;
-
-    const wrap = document.createElement("article");
-    wrap.className = "quest";
-    wrap.innerHTML =
-      '<div class="row">' +
-        '<span class="badge gold">#' + q.id.toString() + "</span>" +
-        '<span class="badge ' + (status === "Open" ? "yes" : "no") + '">' + status + "</span>" +
-        (mine ? '<span class="badge gold">Yours</span>' : "") +
-      "</div>" +
-      "<h3></h3>" +
-      "<p></p>" +
-      (link ? '<p><a class="task-link" href="#" rel="noopener">Open task link</a></p>' : "") +
-      '<div class="meta">' +
-        "<span>" + q.completionCount.toString() + " / " + q.maxCompletions.toString() + " completions</span>" +
-        "<span>" + timeLeft(q.endsAt) + "</span>" +
-        "<span>Reward: " + reward + "</span>" +
-        "<span>Pool left: " + pool + "</span>" +
-        '<span>Creator: <a href="' + explorer("/address/" + q.creator) + '" target="_blank" rel="noopener">' + shortAddr(q.creator) + "</a></span>" +
-      "</div>" +
-      '<button class="primary ai-btn" type="button">🤖 Copy prompt for Binance AI Pro</button>' +
-      '<p class="ai-hint" style="font-size:13px;opacity:.8;margin:6px 0 10px">Your Agent ID lives in your Agentic Wallet. Copy this prompt, open Binance App → AI Pro, paste and send. Confirm the preview (value 0 BNB).</p>' +
-      '<button class="ghost complete-btn" type="button">Complete with browser wallet</button>' +
-      (canWithdraw ? '<button class="secondary withdraw-btn" type="button">Withdraw unused BNB</button>' : "") +
-      '<div class="tx complete-status"></div>';
-
-    wrap.querySelector("h3").textContent = q.title;
-    wrap.querySelector("p").textContent = q.description;
-    const a = wrap.querySelector(".task-link");
-    if (a) {
-      a.addEventListener("click", function (ev) {
-        ev.preventDefault();
-        // Do not auto-open javascript: or other unsafe schemes.
-        try {
-          const u = new URL(link, window.location.href);
-          if (u.protocol !== "http:" && u.protocol !== "https:") {
-            alert("This quest link is not a normal http(s) URL.");
-            return;
-          }
-          window.open(u.href, "_blank", "noopener");
-        } catch (_) {
-          alert("This quest link is not valid.");
-        }
-      });
-    }
-
-    const aiBtn = wrap.querySelector(".ai-btn");
-    if (ended || full) aiBtn.disabled = true;
-    aiBtn.addEventListener("click", function () {
-      const prompt = aiPrompt(q);
-      const done = function () { const o = aiBtn.textContent; aiBtn.textContent = "✅ Copied! Paste it in Binance AI Pro"; setTimeout(function () { aiBtn.textContent = o; }, 2500); };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(prompt).then(done, function () { window.prompt("Copy this prompt:", prompt); });
-      } else { window.prompt("Copy this prompt:", prompt); }
-    });
-    const cBtn = wrap.querySelector(".complete-btn");
-    const statusEl = wrap.querySelector(".complete-status");
-    if (ended || full) cBtn.disabled = true;
-    cBtn.addEventListener("click", function () { sendComplete(q.id, cBtn, statusEl); });
-    const wBtn = wrap.querySelector(".withdraw-btn");
-    if (wBtn) wBtn.addEventListener("click", function () { sendWithdraw(q.id, wBtn, statusEl); });
-    return wrap;
-  }
-
-  async function loadQuests() {
-    if (!isConfigured()) {
-      els.questList.innerHTML = '<div class="empty">Contract address is not set yet. After you deploy, paste it into frontend/config.js (see DEPLOY.md).</div>';
-      return;
-    }
-    els.questList.innerHTML = '<div class="empty">Loading quests…</div>';
-    try {
-      const board = boardContract(false);
-      const total = await board.questCount();
-      if (total === 0n) {
-        els.questList.innerHTML = '<div class="empty">No quests yet. Create the first one.</div>';
-        return;
-      }
-      const page = await board.getQuests(0, 50);
-      // Show newest first
-      const items = [...page].reverse();
-      els.questList.innerHTML = "";
-      for (const q of items) els.questList.appendChild(renderQuest(q));
-      if (total > 50n) {
-        const note = document.createElement("p");
-        note.className = "hint";
-        note.textContent = "Showing the 50 most recent of " + total.toString() + " quests.";
-        els.questList.appendChild(note);
-      }
-    } catch (err) {
-      console.error(err);
-      els.questList.innerHTML = '<div class="empty">Could not load quests: ' + friendlyError(err) + "</div>";
-    }
-  }
-
-  async function loadLeaderboard() {
-    if (!isConfigured()) {
-      els.leaderboard.innerHTML = '<div class="empty">Contract address is not set yet.</div>';
-      return;
-    }
-    try {
-      const board = boardContract(false);
-      const count = await board.getPointHolderCount();
-      if (count === 0n) {
-        els.leaderboard.innerHTML = '<div class="empty">No points yet. Complete a quest to appear here.</div>';
-        return;
-      }
-      const result = await board.getPointHolders(0, 200);
-      const accounts = result[0] || result.accounts;
-      const pts = result[1] || result.pts;
-      const rows = accounts.map(function (addr, i) { return { addr, pts: pts[i] }; });
-      rows.sort(function (a, b) {
-        if (a.pts === b.pts) return 0;
-        return a.pts > b.pts ? -1 : 1;
-      });
-      const table = document.createElement("table");
-      table.innerHTML = "<thead><tr><th>#</th><th>Address</th><th>Points</th></tr></thead>";
-      const tb = document.createElement("tbody");
-      rows.forEach(function (r, i) {
-        const tr = document.createElement("tr");
-        tr.innerHTML =
-          '<td class="rank">' + (i + 1) + "</td>" +
-          '<td class="mono"><a href="' + explorer("/address/" + r.addr) + '" target="_blank" rel="noopener">' +
-          shortAddr(r.addr) + "</a></td>" +
-          "<td>" + r.pts.toString() + "</td>";
-        tb.appendChild(tr);
-      });
-      table.appendChild(tb);
-      els.leaderboard.innerHTML = "";
-      els.leaderboard.appendChild(table);
-    } catch (err) {
-      els.leaderboard.innerHTML = '<div class="empty">Could not load leaderboard: ' + friendlyError(err) + "</div>";
-    }
-  }
-
-  async function sendTx(button, statusEl, sendFn, pendingLabel) {
-    if (!state.signer) {
-      await connect();
-      if (!state.signer) return;
-    }
-    button.disabled = true;
-    const old = button.textContent;
-    button.textContent = pendingLabel || "Confirm in wallet…";
-    if (statusEl) statusEl.textContent = "Your wallet will ask you to confirm this transaction.";
-    try {
-      await ensureChain();
-      state.signer = await state.browser.getSigner();
-      state.account = await state.signer.getAddress();
-      const tx = await sendFn();
-      if (statusEl) {
-        statusEl.innerHTML = 'Submitted: <a href="' + explorer("/tx/" + tx.hash) + '" target="_blank" rel="noopener">' +
-          shortAddr(tx.hash) + "</a>. Waiting for confirmation…";
-      }
-      await tx.wait();
-      if (statusEl) {
-        statusEl.innerHTML = 'Confirmed: <a href="' + explorer("/tx/" + tx.hash) + '" target="_blank" rel="noopener">' +
-          shortAddr(tx.hash) + "</a>";
-      }
-      await refreshAccount();
-      await Promise.all([loadQuests(), loadLeaderboard()]);
-    } catch (err) {
-      console.error(err);
-      if (statusEl) statusEl.textContent = friendlyError(err);
-      else setAlert("err", friendlyError(err));
-    } finally {
-      button.disabled = false;
-      button.textContent = old;
-    }
+  function promptRules(valueLabel) {
+    return "Rules: show me a preview first and wait for my confirmation before sending. Send " +
+      valueLabel + " only. If Dev Mode is off or the call fails, stop and tell me. " +
+      "Never ask me for keys, codes or seed phrases. After it confirms, tell me the transaction hash.";
   }
 
   function aiPrompt(q) {
@@ -436,19 +182,341 @@
       "Value: 0 BNB\n" +
       "Input data: " + data + "\n\n" +
       "Quest #" + id + ": " + q.title + "\n\n" +
-      "Rules: show me a preview first and wait for my confirmation before sending. Send value 0 only. If Dev Mode is off or the call fails, stop and tell me. Never ask me for keys, codes or seed phrases. After it confirms, tell me the transaction hash.";
+      promptRules("value 0 BNB");
   }
 
-  function sendComplete(id, btn, statusEl) {
-    return sendTx(btn, statusEl, function () {
-      return boardContract(true).completeQuest(id);
-    }, "Confirm in wallet…");
+  function withdrawPrompt(q) {
+    const id = q.id.toString();
+    const iface = new ethers.Interface(["function withdrawUnused(uint256 questId)"]);
+    const data = iface.encodeFunctionData("withdrawUnused", [q.id]);
+    return "Using my Binance Agentic Wallet, withdraw unused BNB from a quest I created on Agent ID Quest Board.\n\n" +
+      "Call this smart contract on BNB Smart Chain (chain ID 56):\n" +
+      "Contract: " + cfg.contractAddress + "\n" +
+      "Function: withdrawUnused(uint256 questId)\n" +
+      "questId: " + id + "\n" +
+      "Value: 0 BNB\n" +
+      "Input data: " + data + "\n\n" +
+      "Only the quest creator can withdraw, and only after the quest has ended or is full. " +
+      "Remaining pool: " + formatBnb(q.remainingPool) + ". The contract has no delete function.\n\n" +
+      promptRules("value 0 BNB");
   }
 
-  function sendWithdraw(id, btn, statusEl) {
-    return sendTx(btn, statusEl, function () {
-      return boardContract(true).withdrawUnused(id);
-    }, "Confirm in wallet…");
+  function badgeLabel(handle, holds) {
+    const h = (handle || "").trim();
+    if (h) return /\.ai$/i.test(h) ? h : h + ".ai";
+    if (holds) return "Agent ID holder";
+    return "";
+  }
+
+  async function lookupHandle(addr) {
+    const key = addr.toLowerCase();
+    if (handleCache.has(key)) return handleCache.get(key);
+    const info = { handle: "", holds: false, badge: "" };
+    try {
+      const nft = await agentNft();
+      const [handleRes, balRes] = await Promise.allSettled([
+        nft.handleOf(addr),
+        nft.balanceOf(addr),
+      ]);
+      if (handleRes.status === "fulfilled") info.handle = handleRes.value || "";
+      if (balRes.status === "fulfilled") info.holds = balRes.value > 0n;
+    } catch (_) { /* ignore */ }
+    info.badge = badgeLabel(info.handle, info.holds);
+    handleCache.set(key, info);
+    return info;
+  }
+
+  function renderQuest(q) {
+    const ended = Number(q.endsAt) <= nowUnix();
+    const full = Number(q.completionCount) >= Number(q.maxCompletions);
+    const closed = ended || full;
+    const canWithdraw = closed && q.remainingPool > 0n;
+    const reward = formatBnb(q.rewardPerCompletion);
+    const pool = formatBnb(q.remainingPool);
+    const link = (q.link || "").trim();
+    const status = ended ? "Ended" : full ? "Full" : "Open";
+
+    const wrap = document.createElement("article");
+    wrap.className = "quest";
+    wrap.innerHTML =
+      '<div class="row">' +
+        '<span class="badge gold">#' + q.id.toString() + "</span>" +
+        '<span class="badge ' + (status === "Open" ? "yes" : "no") + '">' + status + "</span>" +
+      "</div>" +
+      "<h3></h3>" +
+      "<p></p>" +
+      (link ? '<p><a class="task-link" href="#" rel="noopener">Open task link</a></p>' : "") +
+      '<div class="meta">' +
+        "<span>" + q.completionCount.toString() + " / " + q.maxCompletions.toString() + " completions</span>" +
+        "<span>" + timeLeft(q.endsAt) + "</span>" +
+        "<span>Reward: " + reward + "</span>" +
+        "<span>Pool left: " + pool + "</span>" +
+        '<span>Creator: <a href="' + explorer("/address/" + q.creator) + '" target="_blank" rel="noopener">' + shortAddr(q.creator) + "</a></span>" +
+      "</div>";
+
+    wrap.querySelector("h3").textContent = q.title;
+    wrap.querySelector("p").textContent = q.description;
+
+    const a = wrap.querySelector(".task-link");
+    if (a) {
+      a.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        try {
+          const u = new URL(link, window.location.href);
+          if (u.protocol !== "http:" && u.protocol !== "https:") {
+            alert("This quest link is not a normal http(s) URL.");
+            return;
+          }
+          window.open(u.href, "_blank", "noopener");
+        } catch (_) {
+          alert("This quest link is not valid.");
+        }
+      });
+    }
+
+    if (!closed) {
+      const hint = document.createElement("p");
+      hint.className = "ai-hint";
+      hint.textContent = "Prompt for Binance AI Pro (complete this quest with your Agentic Wallet):";
+      const pre = document.createElement("pre");
+      pre.className = "ai-prompt";
+      pre.textContent = aiPrompt(q);
+      const btn = document.createElement("button");
+      btn.className = "primary ai-btn";
+      btn.type = "button";
+      btn.textContent = "Copy prompt";
+      btn.addEventListener("click", function () { copyText(aiPrompt(q), btn); });
+      wrap.appendChild(hint);
+      wrap.appendChild(pre);
+      wrap.appendChild(btn);
+    }
+
+    if (canWithdraw) {
+      const hint = document.createElement("p");
+      hint.className = "ai-hint";
+      hint.textContent = "This quest has ended or is full and still has unused BNB. Only the quest creator can withdraw it. The contract has no delete function.";
+      const pre = document.createElement("pre");
+      pre.className = "ai-prompt withdraw-prompt";
+      pre.textContent = withdrawPrompt(q);
+      const btn = document.createElement("button");
+      btn.className = "secondary withdraw-btn";
+      btn.type = "button";
+      btn.textContent = "Copy withdraw unused BNB prompt";
+      btn.addEventListener("click", function () { copyText(withdrawPrompt(q), btn); });
+      wrap.appendChild(hint);
+      wrap.appendChild(pre);
+      wrap.appendChild(btn);
+    }
+
+    return wrap;
+  }
+
+  function setPlaceholder(el, html, isEmpty) {
+    el.className = isEmpty ? "empty placeholder" : "";
+    el.innerHTML = html;
+  }
+
+  async function loadQuests() {
+    if (!isConfigured()) {
+      setPlaceholder(els.questList, "Contract address is not set yet.", true);
+      return;
+    }
+    setPlaceholder(els.questList, "Loading quests…", true);
+    try {
+      const board = await boardContract();
+      const total = await board.questCount();
+      if (total === 0n) {
+        setPlaceholder(els.questList, "No quests yet. Create the first one.", true);
+        state.quests = [];
+        return;
+      }
+      const page = await board.getQuests(0, 50);
+      const items = [...page].reverse();
+      state.quests = items;
+      els.questList.className = "";
+      els.questList.innerHTML = "";
+      for (const q of items) els.questList.appendChild(renderQuest(q));
+      if (total > 50n) {
+        const note = document.createElement("p");
+        note.className = "hint";
+        note.textContent = "Showing the 50 most recent of " + total.toString() + " quests.";
+        els.questList.appendChild(note);
+      }
+    } catch (err) {
+      console.error(err);
+      setPlaceholder(els.questList, "Could not load quests: " + escapeHtml(friendlyError(err)), true);
+    }
+  }
+
+  async function loadLeaderboard() {
+    if (!isConfigured()) {
+      setPlaceholder(els.leaderboard, "Contract address is not set yet.", true);
+      return;
+    }
+    try {
+      const board = await boardContract();
+      const count = await board.getPointHolderCount();
+      if (count === 0n) {
+        setPlaceholder(els.leaderboard, "No points yet. Complete a quest to appear here.", true);
+        return;
+      }
+      const result = await board.getPointHolders(0, 200);
+      const accounts = result[0] || result.accounts;
+      const pts = result[1] || result.pts;
+      const rows = accounts.map(function (addr, i) { return { addr: addr, pts: pts[i] }; });
+      rows.sort(function (a, b) {
+        if (a.pts === b.pts) return 0;
+        return a.pts > b.pts ? -1 : 1;
+      });
+      const infos = await Promise.all(rows.map(function (r) { return lookupHandle(r.addr); }));
+      const table = document.createElement("table");
+      table.innerHTML = "<thead><tr><th>#</th><th>Agent</th><th>Points</th></tr></thead>";
+      const tb = document.createElement("tbody");
+      rows.forEach(function (r, i) {
+        const info = infos[i] || {};
+        const tr = document.createElement("tr");
+        const rank = document.createElement("td");
+        rank.className = "rank";
+        rank.textContent = String(i + 1);
+        const agent = document.createElement("td");
+        if (info.badge) {
+          const badge = document.createElement("span");
+          badge.className = "agent-badge";
+          badge.innerHTML = '<span class="dot"></span>';
+          const label = document.createElement("span");
+          label.textContent = info.badge;
+          badge.appendChild(label);
+          agent.appendChild(badge);
+        } else {
+          const fallback = document.createElement("span");
+          fallback.className = "badge no";
+          fallback.textContent = "No Agent ID";
+          agent.appendChild(fallback);
+        }
+        const sub = document.createElement("a");
+        sub.className = "addr-sub mono";
+        sub.href = explorer("/address/" + r.addr);
+        sub.target = "_blank";
+        sub.rel = "noopener";
+        sub.textContent = shortAddr(r.addr);
+        agent.appendChild(sub);
+        const ptd = document.createElement("td");
+        ptd.textContent = r.pts.toString();
+        tr.appendChild(rank);
+        tr.appendChild(agent);
+        tr.appendChild(ptd);
+        tb.appendChild(tr);
+      });
+      table.appendChild(tb);
+      els.leaderboard.className = "";
+      els.leaderboard.innerHTML = "";
+      els.leaderboard.appendChild(table);
+    } catch (err) {
+      setPlaceholder(els.leaderboard, "Could not load leaderboard: " + escapeHtml(friendlyError(err)), true);
+    }
+  }
+
+  async function onCheck(ev) {
+    ev.preventDefault();
+    const raw = (els.checkAddr.value || "").trim();
+    els.checkResult.hidden = false;
+    els.checkResult.className = "agent-result";
+    if (!ethers.isAddress(raw)) {
+      els.checkResult.innerHTML = '<p class="hint" style="margin:0">That is not a valid wallet address. Paste a 0x address from an Agentic Wallet.</p>';
+      return;
+    }
+    const addr = ethers.getAddress(raw);
+    els.checkBtn.disabled = true;
+    els.checkResult.textContent = "Looking up this agent…";
+    try {
+      const board = await boardContract();
+      const [info, pts, questPack] = await Promise.all([
+        lookupHandle(addr),
+        board.points(addr),
+        (async function () {
+          if (state.quests && state.quests.length) return state.quests;
+          const total = await board.questCount();
+          if (total === 0n) return [];
+          return [...await board.getQuests(0, 50)];
+        })(),
+      ]);
+      const completed = [];
+      for (const q of questPack) {
+        try {
+          const yes = await board.hasCompleted(q.id, addr);
+          if (yes) completed.push(q);
+        } catch (_) { /* ignore one quest */ }
+      }
+
+      const box = document.createElement("div");
+      box.className = "agent-result";
+      const row = document.createElement("div");
+      if (info.badge) {
+        const badge = document.createElement("span");
+        badge.className = "agent-badge";
+        badge.innerHTML = '<span class="dot"></span>';
+        const label = document.createElement("span");
+        label.textContent = info.badge;
+        badge.appendChild(label);
+        row.appendChild(badge);
+      } else {
+        const badge = document.createElement("span");
+        badge.className = "badge no";
+        badge.textContent = "No Agent ID";
+        row.appendChild(badge);
+      }
+      box.appendChild(row);
+
+      const holds = document.createElement("p");
+      holds.className = "hint";
+      holds.style.margin = "0 0 4px";
+      holds.textContent = info.holds
+        ? "This address holds an Agent ID NFT."
+        : "This address does not currently hold an Agent ID.";
+      box.appendChild(holds);
+
+      const link = document.createElement("a");
+      link.className = "mono";
+      link.href = explorer("/address/" + addr);
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = addr;
+      box.appendChild(link);
+
+      const ptsEl = document.createElement("div");
+      ptsEl.className = "pts";
+      ptsEl.textContent = pts.toString() + (pts === 1n ? " point" : " points");
+      box.appendChild(ptsEl);
+
+      const sub = document.createElement("p");
+      sub.className = "hint";
+      sub.style.margin = "0 0 4px";
+      sub.textContent = completed.length
+        ? "Completed quests"
+        : "No completed quests yet.";
+      box.appendChild(sub);
+
+      if (completed.length) {
+        const ul = document.createElement("ul");
+        ul.className = "completed-list";
+        completed.forEach(function (q) {
+          const li = document.createElement("li");
+          li.textContent = "Quest #" + q.id.toString() + " — " + q.title;
+          ul.appendChild(li);
+        });
+        box.appendChild(ul);
+      }
+
+      els.checkResult.replaceWith(box);
+      box.id = "checkResult";
+      els.checkResult = box;
+    } catch (err) {
+      console.error(err);
+      els.checkResult.innerHTML = '<p class="hint" style="margin:0">Could not look up this agent: ' +
+        escapeHtml(friendlyError(err)) + "</p>";
+    } finally {
+      els.checkBtn.disabled = false;
+    }
   }
 
   async function onCreate(ev) {
@@ -472,12 +540,43 @@
     try { value = ethers.parseEther(poolStr); }
     catch (_) { setAlert("err", "Invalid BNB amount."); return; }
 
-    const btn = document.getElementById("createBtn");
-    await sendTx(btn, null, function () {
-      return boardContract(true).createQuest(
-        title, description, link, maxC, endsAt, { value }
-      );
-    }, "Confirm in wallet…");
+    if (!maxC || maxC < 1) { setAlert("err", "Max completions must be at least 1."); return; }
+    const iface = new ethers.Interface(["function createQuest(string title,string description,string link,uint32 maxCompletions,uint64 endsAt)"]);
+    const data = iface.encodeFunctionData("createQuest", [title, description, link, maxC, endsAt]);
+    const valueLabel = (poolStr === "0" || value === 0n) ? "0 BNB" : poolStr + " BNB (reward pool)";
+    const prompt = "Using my Binance Agentic Wallet, create a new quest on Agent ID Quest Board.\n\n" +
+      "Call this smart contract on BNB Smart Chain (chain ID 56):\n" +
+      "Contract: " + cfg.contractAddress + "\n" +
+      "Function: createQuest(string title, string description, string link, uint32 maxCompletions, uint64 endsAt)\n" +
+      "title: " + title + "\n" +
+      "description: " + description + "\n" +
+      "link: " + (link || "(empty)") + "\n" +
+      "maxCompletions: " + maxC + "\n" +
+      "endsAt: " + endsAt + " (" + new Date(endsAt * 1000).toUTCString() + ")\n" +
+      "Value: " + valueLabel + "\n" +
+      "Input data: " + data + "\n\n" +
+      promptRules("exactly " + (poolStr === "0" || value === 0n ? "0 BNB" : poolStr + " BNB") + " as value, nothing more");
+    const pre = document.getElementById("createPrompt");
+    const cb = document.getElementById("copyCreateBtn");
+    pre.textContent = prompt;
+    pre.style.display = "block";
+    cb.style.display = "block";
+    cb.onclick = function () { copyText(prompt, cb); };
+    copyText(prompt, cb);
+  }
+
+  function copyText(text, btn) {
+    const original = btn ? btn.textContent : "";
+    const done = function () {
+      if (!btn) return;
+      btn.textContent = "Copied — paste it in Binance AI Pro";
+      setTimeout(function () { btn.textContent = original; }, 2500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { window.prompt("Copy this prompt:", text); });
+    } else {
+      window.prompt("Copy this prompt:", text);
+    }
   }
 
   function showBootAlerts() {
@@ -486,10 +585,11 @@
       return;
     }
     if (!isConfigured()) {
-      setAlert("warn", "This is the demo UI. After you deploy QuestBoard, paste the contract address into <span class='mono'>frontend/config.js</span> and refresh. Instructions are in DEPLOY.md.");
+      setAlert("warn", "This is the demo UI. After you deploy QuestBoard, paste the contract address into <span class='mono'>frontend/config.js</span> and refresh.");
     } else {
       setAlert("ok", "Contract: <a href='" + explorer("/address/" + cfg.contractAddress) + "' target='_blank' rel='noopener'>" +
-        shortAddr(cfg.contractAddress) + "</a> on " + (cfg.chainName || "BNB Smart Chain") + ".");
+        shortAddr(cfg.contractAddress) + "</a> on " + (cfg.chainName || "BNB Smart Chain") +
+        ". This site never connects a wallet.");
     }
   }
 
@@ -509,25 +609,15 @@
     updateRewardPreview();
     els.pool.addEventListener("input", updateRewardPreview);
     els.maxCompletions.addEventListener("input", updateRewardPreview);
-    els.connectBtn.addEventListener("click", function () {
-      connect().catch(function (err) { setAlert("err", friendlyError(err)); });
-    });
     els.refreshBtn.addEventListener("click", function () {
-      Promise.all([refreshAccount(), loadQuests(), loadLeaderboard()]);
+      Promise.all([loadQuests(), loadLeaderboard()]);
     });
     els.createForm.addEventListener("submit", onCreate);
+    if (els.checkForm) els.checkForm.addEventListener("submit", onCheck);
     initTabs();
     showBootAlerts();
     loadQuests();
     loadLeaderboard();
-
-    const injected = getInjected();
-    if (injected && injected.on) {
-      injected.on("accountsChanged", function () {
-        connect().catch(function (err) { setAlert("err", friendlyError(err)); });
-      });
-      injected.on("chainChanged", function () { window.location.reload(); });
-    }
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

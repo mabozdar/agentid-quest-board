@@ -4,194 +4,245 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
-  <meta name="theme-color" content="#0c1220" />
-  <title>Quest Board — Agent ID</title>
+  <meta name="theme-color" content="#0b0820" />
+  <title>Agent ID Quest Board — A project by Crypto Man MAB</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%23ff3cac'/%3E%3Cstop offset='.5' stop-color='%23784ba0'/%3E%3Cstop offset='1' stop-color='%232b86c5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='url(%23g)'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-family='Arial,sans-serif' font-weight='800' font-size='22' fill='white'%3EQB%3C/text%3E%3C/svg%3E" />
+  <meta name="description" content="Sybil-resistant quest board on BNB Chain, gated by Binance Agent ID. Complete or create quests with Binance AI Pro and your Agentic Wallet. A project by Crypto Man MAB." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg: #0c1220;
-      --bg-elev: #151d2e;
-      --bg-card: #1a2438;
-      --line: #2a3550;
-      --text: #e8edf7;
-      --muted: #8b97ad;
+      --bg: #0b0820;
+      --bg-elev: #15102c;
+      --bg-card: rgba(22, 18, 48, 0.72);
+      --line: rgba(255, 255, 255, 0.10);
+      --text: #eef1fb;
+      --muted: #9aa3c0;
       --gold: #f4b942;
       --gold-dim: rgba(244, 185, 66, 0.16);
-      --ok: #3ddc97;
-      --ok-dim: rgba(61, 220, 151, 0.14);
+      --ok: #00f5a0;
+      --ok-dim: rgba(0, 245, 160, 0.14);
       --warn: #ffb020;
-      --danger: #ff6b6b;
-      --danger-dim: rgba(255, 107, 107, 0.14);
+      --danger: #ff6b8a;
+      --danger-dim: rgba(255, 107, 138, 0.14);
       --blue: #7aa2ff;
+      --cyan: #00d9f5;
       --radius: 16px;
       --tap: 48px;
+      --grad: linear-gradient(135deg, #ff3cac 0%, #784ba0 50%, #2b86c5 100%);
+      --grad2: linear-gradient(135deg, #f9d423, #ff4e50);
+      --grad3: linear-gradient(135deg, #00f5a0, #00d9f5);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { background: var(--bg); color: var(--text); }
     body {
-      font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+      font-family: "Poppins", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
       line-height: 1.45;
       min-height: 100dvh;
       padding-bottom: 88px;
+      position: relative;
+      overflow-x: hidden;
     }
-    a { color: var(--gold); }
+    a { color: var(--gold); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+    .bg-blob { position: fixed; border-radius: 50%; filter: blur(70px); opacity: .45; z-index: -1; animation: float 14s ease-in-out infinite; pointer-events: none; }
+    .b1 { width: 320px; height: 320px; background: #ff3cac; top: -80px; left: -90px; }
+    .b2 { width: 300px; height: 300px; background: #2b86c5; top: 35%; right: -120px; animation-delay: -4s; }
+    .b3 { width: 280px; height: 280px; background: #f9d423; bottom: -90px; left: 10%; opacity: .28; animation-delay: -8s; }
+    @keyframes float { 0%, 100% { transform: translate(0,0) scale(1); } 50% { transform: translate(30px,40px) scale(1.12); } }
     header {
       position: sticky; top: 0; z-index: 20;
-      background: rgba(12, 18, 32, 0.92);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid var(--line);
-      padding: 12px 16px 10px;
+      background: rgba(11, 8, 32, 0.78);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 12px 16px 11px;
     }
     .row { display: flex; align-items: center; gap: 10px; }
     .brand-mark {
-      width: 36px; height: 36px; border-radius: 10px;
-      background: linear-gradient(135deg, #f4b942, #c47b12);
-      color: #1a1204; font-weight: 800; display: grid; place-items: center;
-      font-size: 13px; flex: none;
+      width: 40px; height: 40px; border-radius: 12px;
+      background: var(--grad); color: #fff;
+      font-weight: 800; display: grid; place-items: center;
+      font-size: 13px; letter-spacing: 0.02em; flex: none;
+      box-shadow: 0 0 18px rgba(255, 60, 172, 0.5);
     }
-    h1 { font-size: 17px; letter-spacing: 0.01em; }
-    .sub { color: var(--muted); font-size: 12px; }
-    #connectBtn, button.primary, button.secondary, button.ghost, button.danger {
+    h1 {
+      font-size: 16px; font-weight: 800; letter-spacing: 0.01em; line-height: 1.2;
+      background: var(--grad2); -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .byline {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.02em; margin-top: 2px;
+      background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    button.primary, button.secondary, button.ghost, button.danger {
       min-height: var(--tap); border: 0; border-radius: 12px;
-      font-weight: 650; font-size: 15px; padding: 0 14px; cursor: pointer;
+      font-weight: 650; font-size: 15px; padding: 0 14px; cursor: pointer; font-family: inherit;
     }
-    #connectBtn, button.primary {
-      background: var(--gold); color: #1a1204; margin-left: auto; flex: none;
+    button.primary {
+      background: var(--grad); color: #fff; width: 100%; margin-top: 8px;
+      box-shadow: 0 6px 20px rgba(120, 75, 160, 0.55); transition: transform .15s;
     }
-    button.primary { width: 100%; margin-left: 0; margin-top: 8px; }
+    button.primary:active { transform: scale(.96); }
     button.secondary { background: var(--bg-elev); color: var(--text); border: 1px solid var(--line); width: 100%; }
-    button.ghost { background: transparent; color: var(--gold); border: 1px solid var(--line); }
+    button.ghost { background: transparent; color: var(--cyan); border: 1px solid rgba(0, 217, 245, 0.4); }
     button.danger { background: var(--danger-dim); color: var(--danger); width: 100%; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
     main { padding: 16px; max-width: 720px; margin: 0 auto; }
-    .banner, .card, .quest, .stat {
+    .banner, .card, .quest, .stat, .how-card, .check-card {
       background: var(--bg-card); border: 1px solid var(--line);
       border-radius: var(--radius); padding: 14px;
+      backdrop-filter: blur(12px);
     }
     .banner { margin-bottom: 12px; font-size: 13px; }
     .banner.warn { border-color: #5a4316; background: #221c12; color: #f3d59a; }
     .banner.err { border-color: #5a1f1f; background: #241313; color: #ffc1c1; }
     .banner.ok { border-color: #1e5a40; background: #10241c; color: #b7f5d7; }
-    .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
-    .stat .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
-    .stat .v { font-size: 14px; margin-top: 4px; word-break: break-all; }
     .badge {
-      display: inline-block; border-radius: 999px; padding: 3px 8px;
+      display: inline-flex; align-items: center; gap: 4px;
+      border-radius: 999px; padding: 3px 8px;
       font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
     }
     .badge.yes { background: var(--ok-dim); color: var(--ok); }
     .badge.no { background: var(--danger-dim); color: var(--danger); }
-    .badge.gold { background: var(--gold-dim); color: var(--gold); }
-    .quest { margin-bottom: 12px; }
+    .badge.gold { background: rgba(249, 212, 35, 0.18); color: #f9d423; }
+    .agent-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      border-radius: 999px; padding: 4px 10px;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.02em;
+      background: linear-gradient(135deg, rgba(255, 60, 172, 0.22), rgba(43, 134, 197, 0.28));
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      color: #fff; max-width: 100%;
+    }
+    .agent-badge .dot {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
+      box-shadow: 0 0 8px var(--ok); flex: none;
+    }
+    .quest { margin-bottom: 12px; border-left: 4px solid transparent; border-image: var(--grad) 1; border-radius: 0; animation: pop .35s ease both; }
+    @keyframes pop { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
     .quest h3 { font-size: 16px; margin: 6px 0 4px; }
     .quest p { color: var(--muted); font-size: 14px; white-space: pre-wrap; }
     .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; font-size: 12px; color: var(--muted); }
     label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 6px; }
     input, textarea, select {
       width: 100%; min-height: var(--tap); border-radius: 12px;
-      border: 1px solid var(--line); background: var(--bg); color: var(--text);
-      padding: 10px 12px; font-size: 16px; font-family: inherit;
+      border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.05);
+      color: var(--text); padding: 10px 12px; font-size: 16px; font-family: inherit;
+      transition: border .2s, box-shadow .2s;
     }
     textarea { min-height: 96px; resize: vertical; }
+    input:focus, textarea:focus { outline: none; border-color: #ff3cac; box-shadow: 0 0 0 3px rgba(255, 60, 172, 0.25); }
     .preview { font-size: 13px; color: var(--muted); margin-top: 8px; }
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    th, td { text-align: left; padding: 10px 6px; border-bottom: 1px solid var(--line); }
+    th, td { text-align: left; padding: 12px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
     th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
-    .rank { color: var(--gold); font-weight: 700; width: 36px; }
+    .rank { color: #f9d423; font-weight: 700; width: 36px; }
+    tr:nth-child(1) .rank:before { content: "🥇 "; }
+    tr:nth-child(2) .rank:before { content: "🥈 "; }
+    tr:nth-child(3) .rank:before { content: "🥉 "; }
     .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+    .addr-sub { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
     nav.tabs {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
       display: grid; grid-template-columns: 1fr 1fr 1fr;
-      background: rgba(12, 18, 32, 0.96); border-top: 1px solid var(--line);
+      background: rgba(11, 8, 32, 0.88); backdrop-filter: blur(12px);
+      border-top: 1px solid var(--line);
       padding: 6px 8px calc(8px + env(safe-area-inset-bottom));
     }
     nav.tabs button {
       background: transparent; color: var(--muted); border: 0;
       min-height: 52px; font-weight: 650; font-size: 13px; cursor: pointer;
-      border-radius: 12px;
+      border-radius: 12px; font-family: inherit;
     }
-    nav.tabs button.active { color: var(--gold); background: var(--gold-dim); }
+    nav.tabs button.active { color: #fff; background: var(--grad); box-shadow: 0 4px 16px rgba(120, 75, 160, 0.5); }
     .panel { display: none; }
     .panel.active { display: block; }
     .hint { color: var(--muted); font-size: 12px; margin: 8px 0 16px; }
-    footer.legal {
-      margin-top: 24px; color: var(--muted); font-size: 11px; line-height: 1.5;
+    footer.site-footer { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line); }
+    .footer-brand { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text); }
+    .footer-brand span { background: var(--grad2); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800; }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 14px; font-size: 13px; }
+    .legal { color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .empty { text-align: center; color: var(--muted); padding: 28px 10px; border: 1px dashed rgba(255, 255, 255, 0.18); border-radius: 18px; background: rgba(255, 255, 255, 0.03); }
+    .empty.placeholder:before { content: "✨"; display: block; font-size: 34px; margin-bottom: 8px; }
+    .hero {
+      position: relative; border-radius: 22px; padding: 20px 18px; margin-bottom: 14px;
+      background: var(--grad); overflow: hidden; box-shadow: 0 10px 30px rgba(255, 60, 172, 0.32);
     }
-    .empty { text-align: center; color: var(--muted); padding: 28px 10px; }
-    .tx { font-size: 13px; margin-top: 8px; word-break: break-all; }
-
-    /* ===== Colorful theme ===== */
-    :root{--grad:linear-gradient(135deg,#ff3cac 0%,#784ba0 50%,#2b86c5 100%);--grad2:linear-gradient(135deg,#f9d423,#ff4e50);--grad3:linear-gradient(135deg,#00f5a0,#00d9f5);--line:rgba(255,255,255,.10);--bg-card:rgba(22,18,48,.62)}
-    html,body{background:#0b0820}
-    body{font-family:"Poppins","Segoe UI",system-ui,sans-serif;position:relative;overflow-x:hidden}
-    .bg-blob{position:fixed;border-radius:50%;filter:blur(70px);opacity:.55;z-index:-1;animation:float 14s ease-in-out infinite}
-    .b1{width:320px;height:320px;background:#ff3cac;top:-80px;left:-90px}
-    .b2{width:300px;height:300px;background:#2b86c5;top:35%;right:-120px;animation-delay:-4s}
-    .b3{width:280px;height:280px;background:#f9d423;bottom:-90px;left:10%;opacity:.35;animation-delay:-8s}
-    @keyframes float{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(30px,40px) scale(1.12)}}
-    header{background:rgba(11,8,32,.72);border-bottom:1px solid rgba(255,255,255,.08)}
-    .brand-mark{background:var(--grad);color:#fff;box-shadow:0 0 18px rgba(255,60,172,.6);font-size:18px}
-    h1{background:var(--grad2);-webkit-background-clip:text;background-clip:text;color:transparent;font-size:19px;font-weight:800}
-    #connectBtn,button.primary{background:var(--grad);color:#fff;box-shadow:0 6px 20px rgba(120,75,160,.55);transition:transform .15s}
-    #connectBtn:active,button.primary:active{transform:scale(.96)}
-    button.ghost{color:#00d9f5;border-color:rgba(0,217,245,.4)}
-    .hero{position:relative;border-radius:22px;padding:20px 18px;margin-bottom:14px;background:var(--grad);overflow:hidden;box-shadow:0 10px 30px rgba(255,60,172,.35)}
-    .hero:after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 85% 15%,rgba(255,255,255,.35),transparent 45%)}
-    .hero .tag{display:inline-block;background:rgba(0,0,0,.25);border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;letter-spacing:.06em}
-    .hero h2{font-size:26px;line-height:1.15;margin:10px 0 6px;font-weight:800}
-    .hero p{font-size:14px;opacity:.92;position:relative;z-index:1}
-    .hero .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;position:relative;z-index:1}
-    .hero .chip{background:rgba(255,255,255,.18);backdrop-filter:blur(6px);border-radius:12px;padding:8px 10px;font-size:12px;font-weight:600}
-    .card,.quest,.stat,.banner{backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.10)}
-    .stat{position:relative;overflow:hidden}
-    .stat:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--grad3)}
-    .status-grid .stat:nth-child(2):before{background:var(--grad2)}
-    .quest{border-left:4px solid transparent;border-image:var(--grad) 1;border-radius:0;animation:pop .35s ease both}
-    @keyframes pop{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-    .badge.gold{background:rgba(249,212,35,.18);color:#f9d423}
-    .badge.yes{background:rgba(0,245,160,.16);color:#00f5a0}
-    h2.section{font-size:18px;font-weight:800;background:var(--grad3);-webkit-background-clip:text;background-clip:text;color:transparent}
-    input,textarea,select{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);transition:border .2s,box-shadow .2s}
-    input:focus,textarea:focus{outline:none;border-color:#ff3cac;box-shadow:0 0 0 3px rgba(255,60,172,.25)}
-    .rank{color:#f9d423}
-    tr:nth-child(2) .rank:before{content:"🥇 "}tr:nth-child(3) .rank:before{content:"🥈 "}tr:nth-child(4) .rank:before{content:"🥉 "}
-    nav.tabs{background:rgba(11,8,32,.85);backdrop-filter:blur(12px)}
-    nav.tabs button.active{color:#fff;background:var(--grad);box-shadow:0 4px 16px rgba(120,75,160,.5)}
-    .empty{border:1px dashed rgba(255,255,255,.18);border-radius:18px;background:rgba(255,255,255,.03)}
-    .empty:before{content:"✨";display:block;font-size:34px;margin-bottom:8px}
-    .empty .empty{border:0;background:none;padding:0}.empty .empty:before{display:none}
+    .hero:after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 85% 15%, rgba(255,255,255,.35), transparent 45%); pointer-events: none; }
+    .hero .tag { display: inline-block; background: rgba(0,0,0,.25); border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 700; letter-spacing: .06em; position: relative; z-index: 1; }
+    .hero h2 { font-size: 24px; line-height: 1.15; margin: 10px 0 6px; font-weight: 800; position: relative; z-index: 1; }
+    .hero p { font-size: 14px; opacity: .92; position: relative; z-index: 1; }
+    .hero .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; position: relative; z-index: 1; }
+    .hero .chip { background: rgba(255,255,255,.18); backdrop-filter: blur(6px); border-radius: 12px; padding: 8px 10px; font-size: 12px; font-weight: 600; }
+    .how-card { margin-bottom: 16px; }
+    .how-card h2 { font-size: 16px; font-weight: 800; margin-bottom: 8px; }
+    .how-card ol { padding-left: 18px; font-size: 14px; }
+    .how-card li { margin: 4px 0; }
+    .how-card .hint { margin-bottom: 0; }
+    h2.section { font-size: 18px; font-weight: 800; background: var(--grad3); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    pre.ai-prompt {
+      white-space: pre-wrap; word-break: break-all; font-size: 12px;
+      background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(0, 217, 245, 0.3);
+      border-radius: 10px; padding: 10px; margin: 8px 0; max-height: 220px;
+      overflow: auto; user-select: all; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    .ai-hint { font-size: 13px; opacity: .85; margin: 8px 0 0; color: var(--text); }
+    .check-card { margin-bottom: 16px; }
+    .check-card h2 { margin-bottom: 4px; }
+    .check-row { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+    .check-row input { width: 100%; }
+    .check-row button { margin-top: 0; width: 100%; }
+    @media (min-width: 520px) {
+      .check-row { flex-direction: row; align-items: stretch; }
+      .check-row input { flex: 1; min-width: 0; }
+      .check-row button { width: auto; flex: none; padding: 0 18px; }
+    }
+    .agent-result { margin-top: 14px; padding: 14px; border-radius: 14px; background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.10); }
+    .agent-result .name { font-size: 16px; font-weight: 700; margin: 8px 0 2px; }
+    .agent-result .pts { font-size: 20px; font-weight: 800; margin: 10px 0 4px; background: var(--grad3); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .completed-list { list-style: none; margin-top: 8px; }
+    .completed-list li { font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+    .completed-list li:last-child { border-bottom: 0; }
+    @media (min-width: 600px) {
+      h1 { font-size: 18px; }
+      .hero h2 { font-size: 28px; }
+    }
   </style>
 </head>
 <body>
   <div class="bg-blob b1"></div><div class="bg-blob b2"></div><div class="bg-blob b3"></div>
   <header>
     <div class="row">
-      <div class="brand-mark">🎯</div>
+      <div class="brand-mark">QB</div>
       <div>
-        <h1>Quest Board</h1>
-        <div class="sub">Sybil-resistant quests for Agent ID holders</div>
+        <h1>Agent ID Quest Board</h1>
+        <div class="byline">A project by Crypto Man MAB</div>
       </div>
-      <button id="connectBtn" type="button">Connect</button>
     </div>
   </header>
 
   <main>
     <div class="hero">
-      <span class="tag">🤖 BUILT FOR AGENT ID HOLDERS</span>
+      <span class="tag">BUILT FOR AGENT ID HOLDERS</span>
       <h2>Complete quests.<br>Earn points. Climb the board.</h2>
-      <p>One Agent ID, one claim per quest. No bot farms, just real people and their AI agents.</p>
-      <div class="chips"><span class="chip">🛡 Sybil-resistant</span><span class="chip">⛓ On BNB Chain</span><span class="chip">✅ You approve every tx</span></div>
+      <p>One Agent ID, one claim per quest. No browser wallet to connect — your AI agent signs every call.</p>
+      <div class="chips">
+        <span class="chip">Sybil-resistant</span>
+        <span class="chip">On BNB Chain</span>
+        <span class="chip">Binance AI Pro</span>
+      </div>
     </div>
     <div id="alerts"></div>
 
-    <div class="status-grid">
-      <div class="stat">
-        <div class="k">Wallet</div>
-        <div class="v" id="walletLabel">Not connected</div>
-      </div>
-      <div class="stat">
-        <div class="k">Agent ID</div>
-        <div class="v" id="agentLabel"><span class="badge no">Unknown</span></div>
-      </div>
+    <div class="how-card">
+      <h2>How it works</h2>
+      <ol>
+        <li>Do the task first (for example, follow the account on X).</li>
+        <li>Pick the quest and copy its prompt, or fill the Create form.</li>
+        <li>Open the Binance App, go to AI Pro, paste and send.</li>
+        <li>Your Agentic Wallet (the one with your Agent ID) previews the call. Confirm it.</li>
+      </ol>
+      <p class="hint">Developer Mode must be on in Agentic Wallet settings (it lasts 7 days). This site never asks you to connect a wallet, and never asks for keys, codes, or seed phrases.</p>
+      <p class="hint" style="margin-top:10px;padding:10px;border:1px solid rgba(0,217,245,.35);border-radius:10px">✅ <b>Honest completion:</b> completions are self-claimed. The contract checks that you hold a real Agent ID and lets each Agent ID claim a quest only once, but it cannot see whether you did the task. Please complete the task before you claim.</p>
     </div>
 
     <section id="panel-quests" class="panel active">
@@ -199,12 +250,12 @@
         <h2 class="section">Open quests</h2>
         <button class="ghost" type="button" id="refreshBtn" style="margin-left:auto;min-height:40px">Refresh</button>
       </div>
-      <div id="questList" class="empty">Connect or wait — loading quests…</div>
+      <div id="questList" class="empty placeholder">Loading quests…</div>
     </section>
 
     <section id="panel-create" class="panel">
       <h2 class="section">Create a quest</h2>
-      <p class="hint">Anyone can create a quest. Only Agent ID holders can complete one, and each address can complete a given quest only once. Optional BNB is paid to completers from this quest’s own pool — not passive income.</p>
+      <p class="hint">Anyone can create a quest with a Binance AI Pro prompt. Only Agent ID holders can complete one, and each address can complete a given quest only once. Optional BNB is paid to completers from this quest’s own pool — not passive income.</p>
       <form id="createForm">
         <label for="title">Title (max 80 characters)</label>
         <input id="title" maxlength="80" required placeholder="Try our dApp and leave feedback" />
@@ -219,30 +270,53 @@
         <label for="pool">Optional BNB reward pool (total)</label>
         <input id="pool" type="number" min="0" step="any" value="0" inputmode="decimal" />
         <div class="preview" id="rewardPreview">Reward per completion: 0 BNB</div>
-        <button class="primary" type="submit" id="createBtn">Create quest</button>
-        <p class="hint">Your wallet will ask you to confirm this transaction. Nothing is signed in the background.</p>
+        <button class="primary" type="submit" id="createBtn">Make prompt for Binance AI Pro</button>
+        <pre id="createPrompt" class="ai-prompt" style="display:none"></pre>
+        <button class="ghost" type="button" id="copyCreateBtn" style="display:none;width:100%">Copy prompt</button>
+        <p class="hint">This page never connects a wallet. Copy the prompt, paste it in Binance AI Pro, and confirm the preview in your Agentic Wallet.</p>
       </form>
     </section>
 
     <section id="panel-board" class="panel">
+      <div class="check-card" id="checkCard">
+        <h2 class="section">Check my agent</h2>
+        <p class="hint">Paste an Agentic Wallet address to see its Agent ID badge, points, and completed quests. Read-only — nothing is signed here.</p>
+        <form id="checkForm">
+          <label for="checkAddr">Agent wallet address</label>
+          <div class="check-row">
+            <input id="checkAddr" required placeholder="0x…" spellcheck="false" autocomplete="off" />
+            <button class="primary" type="submit" id="checkBtn">Check</button>
+          </div>
+        </form>
+        <div id="checkResult" hidden></div>
+      </div>
       <h2 class="section">Leaderboard</h2>
-      <p class="hint">1 point per completed quest. Completions are self-claimed on-chain.</p>
-      <div id="leaderboard" class="empty">No points yet.</div>
+      <p class="hint">1 point per completed quest. Completions are self-claimed on-chain. Badges are Agent ID handles.</p>
+      <div id="leaderboard" class="empty placeholder">No points yet.</div>
     </section>
 
-    <footer class="legal">
-      Independent hackathon entry. Not affiliated with, endorsed by, or sponsored by Binance, BNB Chain, or SPACE ID.
-      Optional BNB rewards are a payment for completing a specific task, not yield or a return on a deposit.
-      Completions are self-claimed and are not automatically verified off-chain.
-      This contract is unaudited. Use small amounts and do your own research.
-      Never paste a seed phrase or private key into this page, Remix, or any website.
+    <footer class="site-footer">
+      <div class="footer-brand">Built by <span>Crypto Man MAB</span> for #BinanceWalletHackathon</div>
+      <div class="footer-links">
+        <a href="https://x.com/MabMan338" target="_blank" rel="noopener">X</a>
+        <a href="https://bscscan.com/address/0x0437bD78F5595F6Ed339C237f98586e9573710fd" target="_blank" rel="noopener">Contract on BscScan</a>
+        <a href="https://github.com/mabozdar/agentid-quest-board" target="_blank" rel="noopener">GitHub</a>
+      </div>
+      <p class="legal">
+        Independent hackathon entry. Not affiliated with, endorsed by, or sponsored by Binance, BNB Chain, or SPACE ID.
+        Optional BNB rewards are a payment for completing a specific task, not yield or a return on a deposit.
+        Completions are self-claimed and are not automatically verified off-chain.
+        This contract is unaudited. Use small amounts and do your own research.
+        There is no delete function on this contract: leftover BNB can only be withdrawn by the quest creator after a quest ends or is full.
+        Never paste a seed phrase or private key into this page, Remix, Binance AI Pro, or any website.
+      </p>
     </footer>
   </main>
 
   <nav class="tabs">
-    <button type="button" class="active" data-tab="quests">🎯 Quests</button>
-    <button type="button" data-tab="create">✨ Create</button>
-    <button type="button" data-tab="board">🏆 Leaderboard</button>
+    <button type="button" class="active" data-tab="quests">Quests</button>
+    <button type="button" data-tab="create">Create</button>
+    <button type="button" data-tab="board">Board</button>
   </nav>
 
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
